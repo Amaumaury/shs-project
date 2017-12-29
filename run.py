@@ -4,7 +4,7 @@ import os, sys
 import unidecode
 import xml.etree.ElementTree as ET
 
-from tqdm import tqdm_notebook
+from tqdm import tqdm
 
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -27,23 +27,42 @@ gdl_files = flatten([[GDL_FOLDER + years_folder + '/' + file for file in mac_lis
 
 def extract_features(article, countries):
     try:
-        date = article.find('entity').find('meta').find('issue_date')
-        id = article.find('entity').find('meta').find('id')
+        date = article.find('entity').find('meta').find('issue_date').text
+        id_ = article.find('entity').find('meta').find('id').text
         text = format_string(article.find('entity').find('full_text').text)
 
-        countries_occurences = list(map(lambda country: [id, date, country, text.count(country)], countries))
+        countries_occurences = list(map(lambda country: text.count(country), countries))
+        article_infos = [id_, date]
+        article_infos.extend(countries_occurences)
     except:
         return None
     
-    return countries_occurences
+    return article_infos
 
-world_coverage = []
 
-for file in tqdm_notebook(gdl_files):
+world_coverage = open('world_coverage', 'w')
+
+world_coverage.write("%s,%s," % ('id', 'date'))
+
+for i, country in enumerate(world_countries):
+    if i < len(world_countries) - 1:
+        world_coverage.write("%s," % country)
+    else:
+        world_coverage.write("%s\n" % country)
+        
+        
+for file_name in tqdm(gdl_files):
+    file = open(file_name, 'r')
     for article in ET.parse(file).getroot().findall('article'):
-        world_coverage.append(extract_features(article, world_countries))
-    
-countries_count_file = open('countries_count_per_article.txt', 'w')
+        countries_occurences = extract_features(article, world_countries)
+        
+        if countries_occurences != None:
+            for i, elem in enumerate(countries_occurences):
+                if i < len(countries_occurences) - 1:
+                    world_coverage.write("%s," % elem)
+                else: 
+                    world_coverage.write("%s\n" % elem)         
+    file.close()
+    gc.collect()
 
-for article in world_coverage:
-    countries_count_file.write("%s\n" % article)
+world_coverage.close()
