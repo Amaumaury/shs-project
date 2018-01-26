@@ -67,8 +67,8 @@ def compute_coverage(original_files, countries, coverage_file):
         gc.collect()
 
 
-gdl_world_coverage = create_coverage_file('gdl')
-jdg_world_coverage = create_coverage_file('jdg')
+gdl_world_coverage = create_coverage_file('gdl_')
+jdg_world_coverage = create_coverage_file('jdg_')
 
 compute_coverage(gdl_files, world_countries, gdl_world_coverage)
 compute_coverage(jdg_files, world_countries, jdg_world_coverage)
