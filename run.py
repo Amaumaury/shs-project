@@ -23,7 +23,7 @@ countries_file = open('present_countries', 'r')
 world_countries = [format_string(country.replace('\n', '')) for country in countries_file]
 
 gdl_files = flatten([[GDL_FOLDER + years_folder + '/' + file for file in mac_listdir(GDL_FOLDER + years_folder)] for years_folder in mac_listdir(GDL_FOLDER)])
-jdg_files = flatten([[GDL_FOLDER + years_folder + '/' + file for file in mac_listdir(JDG_FOLDER + years_folder)] for years_folder in mac_listdir(JDG_FOLDER)])
+jdg_files = flatten([[JDG_FOLDER + years_folder + '/' + file for file in mac_listdir(JDG_FOLDER + years_folder)] for years_folder in mac_listdir(JDG_FOLDER)])
 
 def extract_features(article, countries):
     try:
