@@ -18,7 +18,7 @@ def mac_listdir(folder):
 flatten = lambda l: [item for sublist in l for item in sublist]
 
 def format_string(string):
-    return unidecode.unidecode(string).lower()
+    return unidecode.unidecode(string)
 
 countries_file = open('present_countries', 'r')
 world_countries = [format_string(country.replace('\n', '')) for country in countries_file]
@@ -36,7 +36,7 @@ def extract_features(article, countries):
         article_infos.extend(countries_occurences)
     except:
         return None
-    
+
     return article_infos
 
 
@@ -49,19 +49,19 @@ for i, country in enumerate(world_countries):
         world_coverage.write("%s," % country)
     else:
         world_coverage.write("%s\n" % country)
-        
-        
+
+
 for file_name in tqdm(gdl_files):
     file = open(file_name, 'r')
     for article in ET.parse(file).getroot().findall('article'):
         countries_occurences = extract_features(article, world_countries)
-        
+
         if countries_occurences != None:
             for i, elem in enumerate(countries_occurences):
                 if i < len(countries_occurences) - 1:
                     world_coverage.write("%s," % elem)
-                else: 
-                    world_coverage.write("%s\n" % elem)         
+                else:
+                    world_coverage.write("%s\n" % elem)
     file.close()
     gc.collect()
 
