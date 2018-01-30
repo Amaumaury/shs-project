@@ -1,4 +1,9 @@
 .DS_Store
 200yrs-news
 .ipynb_checkpoints
-
+NDA-DatasetLeTemps-individual.docx
+README.txt
+document_matrix.npz
+gdl_world_coverage.csv
+jdg_world_coverage.csv
+world_coverage.csv
