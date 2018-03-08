@@ -32,7 +32,8 @@ def extract_features(article, countries):
         text = format_string(article.find('entity').find('full_text').text)
 
         countries_occurences = list(map(lambda country: text.count(country), countries))
-        article_infos = [id_, date]
+        penalization = len(text.split(' '))
+        article_infos = [id_, date, penalization]
         article_infos.extend(countries_occurences)
     except:
         return None
@@ -42,7 +43,7 @@ def extract_features(article, countries):
 def create_coverage_file(prefix):
     world_coverage = open(prefix + 'world_coverage', 'w')
 
-    world_coverage.write("%s,%s," % ('id', 'date'))
+    world_coverage.write("%s,%s,%s," % ('id', 'date', 'penalization'))
 
     for i, country in enumerate(world_countries):
         if i < len(world_countries) - 1:
