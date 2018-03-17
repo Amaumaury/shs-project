@@ -32,6 +32,14 @@ object Main {
         }
     }
 
+    // Circe semi-automatic derivation <3
+    @JsonCodec case class ArticleData(date: Option[Array[Int]], word_count: Option[Int], page_no: Option[Int],
+                                      counts: HashMap[String, HashMap[String, Int]], title_counts: HashMap[String, HashMap[String, Int]])
+    @JsonCodec case class MonthArticles(journal: String, month: String, year: String, articles: Seq[ArticleData]) {
+        val filename: String = s"$MONTHLY_JSON_FOLDER/$journal $month-$year.json"
+        def dumpToFile = writeJsonToFile(this.asJson, filename)
+    }
+
     // Make sure these folders exist
     var MONTHLY_JSON_FOLDER = "monthlyJson"
     var XML_TOP_FOLDER = "data"
@@ -99,14 +107,6 @@ object Main {
         })
     }
 
-    // Circe semi-automatic derivation <3
-    @JsonCodec case class ArticleData(date: Option[Array[Int]], word_count: Option[Int], page_no: Option[Int],
-                                      counts: HashMap[String, HashMap[String, Int]], title_counts: HashMap[String, HashMap[String, Int]])
-    @JsonCodec case class MonthArticles(journal: String, month: String, year: String, articles: Seq[ArticleData]) {
-        val filename: String = s"$MONTHLY_JSON_FOLDER/$journal $month-$year.json"
-        def dumpToFile = writeJsonToFile(this.asJson, filename)
-    }
-
     /**
      * Receives an XML document, counts the words and retrieves some metadata
     */
@@ -143,14 +143,8 @@ object Main {
         val date = dateString.substring(0, 10).replace("/", "-")
 
         val title = (meta \ "name").text
-        val page_no = {
-            try {Some((meta \ "page_no").text.toInt)}
-            catch {case e : java.lang.NumberFormatException => None}
-        }
-        val word_count = {
-            try {Some((meta \ "word_count").text.toInt)}
-            catch {case e: java.lang.NumberFormatException => None}
-        }
+        val page_no: Option[Int] = Try((meta \ "page_no").text.toInt).toOption
+        val word_count: Option[Int] = Try((meta \ "word_count").text.toInt).toOption
 
         val counts = HashMap[String, HashMap[String, Int]]()
         val title_counts = HashMap[String, HashMap[String, Int]]()
@@ -173,10 +167,7 @@ object Main {
         else None
     }
 
-    def parseDate(s: String): Option[Array[Int]] = {
-        try {Some(s.split("-").map(_.toInt))}
-        catch {case e : java.lang.NumberFormatException => None}
-    }
+    def parseDate(s: String): Option[Array[Int]] = Try(s.split("-").map(_.toInt)).toOption
  
     def writeJsonToFile(o: io.circe.Json, filename: String) {
         val pw = new PrintWriter(new File(filename))
