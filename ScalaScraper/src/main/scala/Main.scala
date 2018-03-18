@@ -156,7 +156,7 @@ object Main {
 
             for (word <- listOfWords) {
                 if (text.contains(word)) categoryData.update(word, categoryData.getOrElse(word, 0) + 1)
-                if (title.contains(word)) titleCategoryData.update(word, categoryData.getOrElse(word, 0) + 1)
+                if (title.contains(word)) titleCategoryData.update(word, titleCategoryData.getOrElse(word, 0) + 1)
             }
 
             if (!counts.contains(category) && !categoryData.isEmpty) counts.put(category, categoryData)
