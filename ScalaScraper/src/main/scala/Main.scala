@@ -66,7 +66,7 @@ object Main {
   def createCSV(category: String) = {
     val counts = countCategory(category)
 
-    val sorted: Stream[((Int, Int), HashMap[String, Int])] = counts.toStream.sortBy(_._1)(dateOrdering)
+    val sorted: Stream[((Int, Int), HashMap[String, Int])] = counts.toStream.sortBy(_._1)
     val wordList: Seq[String] = words.getOrElse(category, List())
     val writer = CSVWriter.open(new File(s"$category.csv"))
 
@@ -204,7 +204,7 @@ object Main {
     for ((k, v) <- right) left.put(k, left.getOrElse(k, 0) + v)
   }
 
-  val dateOrdering: math.Ordering[(Int, Int)] = new Ordering[(Int, Int)] {
+  implicit val dateOrdering: math.Ordering[(Int, Int)] = new Ordering[(Int, Int)] {
     override def compare(x: (Int, Int), y: (Int, Int)): Int = {
       val ((monthA, yearA), (monthB, yearB)) = (x, y)
       val yearDiff = yearA - yearB
