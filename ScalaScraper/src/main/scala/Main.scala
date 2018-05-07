@@ -47,7 +47,6 @@ object Main {
 
   @JsonCodec case class MonthArticles(journal: String, month: Int, year: Int, articles: Seq[ArticleData]) {
     val filename: String = s"$MONTHLY_JSON_FOLDER/$journal $month-$year.json"
-
     def dumpToFile = writeJsonToFile(this.asJson, filename)
   }
 
@@ -68,7 +67,7 @@ object Main {
 
     val sorted: Stream[((Int, Int), Map[String, Double])] = counts.toStream.sortBy(_._1)
     val wordList: Seq[String] = words.getOrElse(category, List())
-    val writer = CSVWriter.open(new File(s"$category-${if (processTitles) "titles" else "text"}-${if (normalize) "normalized" else ""}.csv"))
+    val writer = CSVWriter.open(new File(s"$category-${if (processTitles) "titles" else "text"}${if (normalize) "-normalized" else ""}.csv"))
 
     writer.writeRow(List("month", "year") ++: wordList)
 
@@ -83,8 +82,8 @@ object Main {
     */
   def countCategory(category: String, processTitles: Boolean, normalize: Boolean): Map[(Int, Int), Map[String, Double]] = {
     val jsons: Stream[File] = getRecursiveListOfFiles(new File(MONTHLY_JSON_FOLDER)).filter(!_.isDirectory)
-    val res = new HashMap[(Int, Int), Map[String, Double]]()
-    val getDict: ArticleData => Map[String,Map[String,Int]] = art => if (!processTitles) art.counts else art.title_counts
+    val res = new HashMap[(Int, Int), HashMap[String, Double]]()
+    val getDict: ArticleData => Map[String, Map[String,Int]] = art => if (!processTitles) art.counts else art.title_counts
     val getCount: ArticleData => Int = art => if (!processTitles) art.word_count else art.title_word_count
     for {
       file <- jsons
@@ -99,9 +98,9 @@ object Main {
         val old: Double = countsForDate.getOrElse(k, 0)
         countsForDate.put(k, old + increment)
       }
-      if (!res.contains(art.date) && !countsForDate.isEmpty) res.put(art.date, countsForDate.toMap)
+      if (!res.contains(art.date) && !countsForDate.isEmpty) res.put(art.date, countsForDate)
     }
-    res.toMap
+    res.mapValues(_.toMap).toMap
   }
 
   def monthYear(file: File): (Int, Int) = {
@@ -124,18 +123,6 @@ object Main {
       art.dumpToFile
       println("Written " + art.filename)
     }
-    /*
-    // This commented code looks better BUT foreach sur le stream memoizes the content of
-    // the stream (e.g. it tries to memorize all the 18 gigs of XML file)
-    // The solution is the ugly for loop above or ScalaZ EphemeralStreams
-    val xmlFiles: Stream[Node] = getRecursiveListOfFiles(new File(s"$XML_TOP_FOLDER")).filter(!_.isDirectory).map(xml.XML.loadFile)
-    val ms: Stream[MonthArticles] = xmlFiles.flatMap(scanXML)
-
-    ms.foreach(m => {
-        m.dumpToFile
-        println("Written " + m.filename)
-    })
-    */
   }
 
   /**
