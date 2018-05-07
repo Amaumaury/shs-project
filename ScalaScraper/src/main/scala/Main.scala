@@ -17,7 +17,13 @@ import io.circe.parser.decode
 import com.github.tototoshi.csv._
 
 object Main {
-  def main(args: Array[String]) = {
+  // Make sure these folders exist
+  var MONTHLY_JSON_FOLDER = "monthlyJson"
+  var XML_TOP_FOLDER = "data"
+  var THREADS: Int = 2
+  var NORMALIZE = true
+
+   def main(args: Array[String]) = {
     if (args.length >= 3) {
       if (args(0) == "createJson") {
         XML_TOP_FOLDER = args(1)
@@ -26,6 +32,7 @@ object Main {
         createMonthlyJsons
       } else if (args(0) == "createCSV") {
         MONTHLY_JSON_FOLDER = args(1)
+        NORMALIZE = args(3).toBoolean
         createCSV(args(2))
       }
     } else if (args(0) == "fromCode") {
@@ -37,7 +44,7 @@ object Main {
   }
 
   // Circe semi-automatic derivation <3
-  @JsonCodec case class ArticleData(date: (Int, Int), word_count: Option[Int], page_no: Option[Int],
+  @JsonCodec case class ArticleData(date: (Int, Int), word_count: Int, page_no: Option[Int],
                                     counts: HashMap[String, HashMap[String, Int]], title_counts: HashMap[String, HashMap[String, Int]])
 
   @JsonCodec case class MonthArticles(journal: String, month: Int, year: Int, articles: Seq[ArticleData]) {
@@ -46,12 +53,7 @@ object Main {
     def dumpToFile = writeJsonToFile(this.asJson, filename)
   }
 
-  // Make sure these folders exist
-  var MONTHLY_JSON_FOLDER = "monthlyJson"
-  var XML_TOP_FOLDER = "data"
-  var THREADS: Int = 2
-
-  /*
+ /*
    * Contains the words that we want to count
    * Example {countries: {Italie: 10, France: 30}, Cities: {New York: 2}}
    */
@@ -66,9 +68,9 @@ object Main {
   def createCSV(category: String) = {
     val counts = countCategory(category)
 
-    val sorted: Stream[((Int, Int), HashMap[String, Int])] = counts.toStream.sortBy(_._1)
+    val sorted: Stream[((Int, Int), HashMap[String, Double])] = counts.toStream.sortBy(_._1)
     val wordList: Seq[String] = words.getOrElse(category, List())
-    val writer = CSVWriter.open(new File(s"$category.csv"))
+    val writer = CSVWriter.open(new File(s"$category-$NORMALIZE.csv"))
 
     writer.writeRow(List("month", "year") ++: wordList)
 
@@ -77,23 +79,28 @@ object Main {
     writer.close()
   }
 
-  /**
+   /**
     * Aggregates all the counts for one category (e.g countries) by grouping them by (month, year) and then
     * summing the values of each group
     */
-  def countCategory(category: String): HashMap[(Int, Int), HashMap[String, Int]] = {
-    val jsons: Stream[File] = getRecursiveListOfFiles(new File(s"$MONTHLY_JSON_FOLDER")).filter(!_.isDirectory)
-    val months: Stream[MonthArticles] = jsons.map(j => Source.fromFile(j).getLines().mkString).flatMap(decode[MonthArticles](_).toOption)
-    val articles: Stream[ArticleData] = months.flatMap(ma => ma.articles)
-
-    val res = new HashMap[(Int, Int), HashMap[String, Int]]()
-    articles.foreach(art => {
+  def countCategory(category: String): HashMap[(Int, Int), HashMap[String, Double]] = {
+    val jsons: Stream[File] = getRecursiveListOfFiles(new File(MONTHLY_JSON_FOLDER)).filter(!_.isDirectory)
+    val res = new HashMap[(Int, Int), HashMap[String, Double]]()
+    for {
+      file <- jsons
+      monthData <- decode[MonthArticles](Source.fromFile(file).getLines().mkString).toOption
+      art <- monthData.articles
+    } {
       // Always defined (see filter above)
-      val countsForDate = res.getOrElse(art.date, new HashMap[String, Int])
+      val countsForDate = res.getOrElse(art.date, new HashMap[String, Double])
       val countsForArticle = art.counts.getOrElse(category, new HashMap[String, Int])
-      mergeIntoFirst(countsForDate, countsForArticle)
+      for ((k, v) <- countsForArticle) {
+        val increment: Double = if (NORMALIZE) v else v / art.word_count.toDouble
+        val old: Double = countsForDate.getOrElse(k, 0)
+        countsForDate.put(k, old + increment)
+      }
       if (!res.contains(art.date) && !countsForDate.isEmpty) res.put(art.date, countsForDate)
-    })
+    }
     res
   }
 
@@ -110,7 +117,7 @@ object Main {
     * Scans XML data in XML_TOP_FOLDER and creates temporary jsons into MONTHLY_JSON_FOLDER
     */
   def createMonthlyJsons() = {
-    val files: ParArray[File] = getRecursiveListOfFiles(new File(s"$XML_TOP_FOLDER")).filter(!_.isDirectory).toParArray
+    val files: ParArray[File] = getRecursiveListOfFiles(new File(XML_TOP_FOLDER)).filter(!_.isDirectory).toParArray
     files.tasksupport = new ForkJoinTaskSupport(new java.util.concurrent.ForkJoinPool(THREADS))
 
     for (file <- files; art <- scanXML(xml.XML.loadFile(file), monthYear(file))) {
@@ -155,25 +162,14 @@ object Main {
   def processArticle(article: Node, monthYear: (Int, Int)): Option[ArticleData] = {
     val meta: NodeSeq = article \\ "meta"
 
-    /*
-    // We study a time series, we have no need for untimed data
-    val dateString = (meta \ "issue_date").text
-    if (dateString.size < 10) {
-        println(s"Invalid datestring: $dateString")
-        return None
-    }
-
-    val date = dateString.substring(0, 10).replace("/", "-")
-    */
-
     val title = (meta \ "name").text
     val page_no: Option[Int] = Try((meta \ "page_no").text.toInt).toOption
-    val word_count: Option[Int] = Try((meta \ "word_count").text.toInt).toOption
 
     val counts = HashMap[String, HashMap[String, Int]]()
     val title_counts = HashMap[String, HashMap[String, Int]]()
 
     val text = (article \\ "full_text").text
+    val word_count: Int = text.split(' ').length//Try((meta \ "word_count").text.toInt).toOption
     for ((category, listOfWords) <- words) {
       val categoryData = counts.getOrElse(category, new HashMap[String, Int]())
       val titleCategoryData = title_counts.getOrElse(category, new HashMap[String, Int]())
@@ -199,10 +195,6 @@ object Main {
 
   def getRecursiveListOfFiles(f: File): Stream[File] =
     f #:: (if (f.isDirectory) f.listFiles().toStream.flatMap(getRecursiveListOfFiles) else Stream.empty)
-
-  def mergeIntoFirst(left: HashMap[String, Int], right: HashMap[String, Int]): Unit = {
-    for ((k, v) <- right) left.put(k, left.getOrElse(k, 0) + v)
-  }
 
   implicit val dateOrdering: math.Ordering[(Int, Int)] = new Ordering[(Int, Int)] {
     override def compare(x: (Int, Int), y: (Int, Int)): Int = {
