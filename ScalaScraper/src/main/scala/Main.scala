@@ -21,7 +21,6 @@ object Main {
   var MONTHLY_JSON_FOLDER = "monthlyJson"
   var XML_TOP_FOLDER = "data"
   var THREADS: Int = 2
-  var NORMALIZE = true
 
    def main(args: Array[String]) = {
     if (args.length >= 3) {
@@ -32,20 +31,19 @@ object Main {
         createMonthlyJsons
       } else if (args(0) == "createCSV") {
         MONTHLY_JSON_FOLDER = args(1)
-        NORMALIZE = args(3).toBoolean
-        createCSV(args(2))
+        createCSV(args(2), args(3).toBoolean, args(4).toBoolean)
       }
     } else if (args(0) == "fromCode") {
       createMonthlyJsons
-      createCSV("countries")
+      createCSV("countries", false, false)
     } else {
       println("I do not know what to do")
     }
   }
 
   // Circe semi-automatic derivation <3
-  @JsonCodec case class ArticleData(date: (Int, Int), word_count: Int, page_no: Option[Int],
-                                    counts: HashMap[String, HashMap[String, Int]], title_counts: HashMap[String, HashMap[String, Int]])
+  @JsonCodec case class ArticleData(date: (Int, Int), word_count: Int, title_word_count: Int, page_no: Option[Int],
+                                    counts: Map[String, Map[String, Int]], title_counts: Map[String, Map[String, Int]])
 
   @JsonCodec case class MonthArticles(journal: String, month: Int, year: Int, articles: Seq[ArticleData]) {
     val filename: String = s"$MONTHLY_JSON_FOLDER/$journal $month-$year.json"
@@ -57,7 +55,7 @@ object Main {
    * Contains the words that we want to count
    * Example {countries: {Italie: 10, France: 30}, Cities: {New York: 2}}
    */
-  val words = decode[HashMap[String, Seq[String]]](Source.fromFile("words.json").getLines().mkString).toOption match {
+  val words = decode[Map[String, Seq[String]]](Source.fromFile("words.json").getLines().mkString).toOption match {
     case Some(ws) => ws
     case None => throw new IllegalStateException("Could not read data file")
   }
@@ -65,12 +63,12 @@ object Main {
   /**
     * Creates a summary CSV file for a category (one row per (month, year), one column per word in the category)
     */
-  def createCSV(category: String) = {
-    val counts = countCategory(category)
+  def createCSV(category: String, processTitles: Boolean, normalize: Boolean) = {
+    val counts = countCategory(category, processTitles, normalize)
 
-    val sorted: Stream[((Int, Int), HashMap[String, Double])] = counts.toStream.sortBy(_._1)
+    val sorted: Stream[((Int, Int), Map[String, Double])] = counts.toStream.sortBy(_._1)
     val wordList: Seq[String] = words.getOrElse(category, List())
-    val writer = CSVWriter.open(new File(s"$category-$NORMALIZE.csv"))
+    val writer = CSVWriter.open(new File(s"$category-${if (processTitles) "titles" else "text"}-${if (normalize) "normalized" else ""}.csv"))
 
     writer.writeRow(List("month", "year") ++: wordList)
 
@@ -83,9 +81,11 @@ object Main {
     * Aggregates all the counts for one category (e.g countries) by grouping them by (month, year) and then
     * summing the values of each group
     */
-  def countCategory(category: String): HashMap[(Int, Int), HashMap[String, Double]] = {
+  def countCategory(category: String, processTitles: Boolean, normalize: Boolean): Map[(Int, Int), Map[String, Double]] = {
     val jsons: Stream[File] = getRecursiveListOfFiles(new File(MONTHLY_JSON_FOLDER)).filter(!_.isDirectory)
-    val res = new HashMap[(Int, Int), HashMap[String, Double]]()
+    val res = new HashMap[(Int, Int), Map[String, Double]]()
+    val getDict: ArticleData => Map[String,Map[String,Int]] = art => if (!processTitles) art.counts else art.title_counts
+    val getCount: ArticleData => Int = art => if (!processTitles) art.word_count else art.title_word_count
     for {
       file <- jsons
       monthData <- decode[MonthArticles](Source.fromFile(file).getLines().mkString).toOption
@@ -93,15 +93,15 @@ object Main {
     } {
       // Always defined (see filter above)
       val countsForDate = res.getOrElse(art.date, new HashMap[String, Double])
-      val countsForArticle = art.counts.getOrElse(category, new HashMap[String, Int])
+      val countsForArticle = getDict(art).getOrElse(category, new HashMap[String, Int])
       for ((k, v) <- countsForArticle) {
-        val increment: Double = if (NORMALIZE) v else v / art.word_count.toDouble
+        val increment: Double = if (!normalize) v else v / getCount(art).toDouble
         val old: Double = countsForDate.getOrElse(k, 0)
         countsForDate.put(k, old + increment)
       }
-      if (!res.contains(art.date) && !countsForDate.isEmpty) res.put(art.date, countsForDate)
+      if (!res.contains(art.date) && !countsForDate.isEmpty) res.put(art.date, countsForDate.toMap)
     }
-    res
+    res.toMap
   }
 
   def monthYear(file: File): (Int, Int) = {
@@ -170,6 +170,7 @@ object Main {
 
     val text = (article \\ "full_text").text
     val word_count: Int = text.split(' ').length//Try((meta \ "word_count").text.toInt).toOption
+    val title_word_count: Int = title.split(' ').length
     for ((category, listOfWords) <- words) {
       val categoryData = counts.getOrElse(category, new HashMap[String, Int]())
       val titleCategoryData = title_counts.getOrElse(category, new HashMap[String, Int]())
@@ -183,7 +184,12 @@ object Main {
       if (!title_counts.contains(category) && !titleCategoryData.isEmpty) title_counts.put(category, titleCategoryData)
     }
 
-    if (!counts.isEmpty || !title_counts.isEmpty) Some(ArticleData(monthYear, word_count, page_no, counts, title_counts))
+    if (!counts.isEmpty || !title_counts.isEmpty) Some(ArticleData(monthYear,
+                                                                   word_count,
+                                                                   title_word_count,
+                                                                   page_no,
+                                                                   counts.mapValues(_.toMap).toMap,
+                                                                   title_counts.mapValues(_.toMap).toMap))
     else None
   }
 
