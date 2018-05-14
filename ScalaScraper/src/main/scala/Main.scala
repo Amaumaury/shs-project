@@ -94,7 +94,7 @@ object Main {
       val countsForDate = res.getOrElse(art.date, new HashMap[String, Double])
       val countsForArticle = getDict(art).getOrElse(category, new HashMap[String, Int])
       for ((k, v) <- countsForArticle) {
-        val increment: Double = if (!normalize) v else v / getCount(art).toDouble
+        val increment: Double = if (!normalize) v else v * getCount(art).toDouble
         val old: Double = countsForDate.getOrElse(k, 0)
         countsForDate.put(k, old + increment)
       }
